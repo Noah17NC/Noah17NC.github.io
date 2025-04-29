@@ -38,7 +38,7 @@
         .absent {
             background-color: #f8d7da !important;
         }
-        #menu, #table-container, #schedule-container {
+        #menu, #table-container {
             display: none;
         }
         #menu img {
@@ -70,30 +70,12 @@
         </div>
         
         <div id="menu" class="text-center">
-            <img src="https://www.agripedia.nc/sites/default/files/2023-01/Lyce%CC%81e%20Mont%20Dore.jpg" alt="Logo du Lycée Polyvalent Mont-Dore" class="img-fluid mb-3">
+            <img src="../design/logodulycée.jpg" alt="Logo" class="img-fluid mb-3">
             <h2>Sélectionnez une Classe</h2>
             <select id="classSelect" class="form-control d-inline-block w-auto mb-2">
                 <option value="">-- Sélectionnez une classe --</option>
             </select>
             <button class="btn btn-primary" onclick="showClass()">Afficher la Classe</button>
-        </div>
-
-        <div id="schedule-container">
-            <h3 id="scheduleTitle" class="text-center mb-4"></h3>
-            <table class="table table-bordered table-striped" id="scheduleTable">
-                <thead>
-                    <tr>
-                        <th>Heure</th>
-                        <th>Lundi</th>
-                        <th>Mardi</th>
-                        <th>Mercredi</th>
-                        <th>Jeudi</th>
-                        <th>Vendredi</th>
-                    </tr>
-                </thead>
-                <tbody id="scheduleTableBody">
-                </tbody>
-            </table>
         </div>
 
         <div id="table-container">
@@ -128,7 +110,6 @@
         let classes = {};
         let currentClass = null;
         let currentGroup = 'all';
-        let schedule = [];
 
         document.getElementById('fileInput').addEventListener('change', handleFile, false);
 
@@ -152,7 +133,6 @@
             let currentClassName = null;
             let currentGroupName = null;
 
-            // Lecture des données de la première feuille (élèves et groupes)
             jsonData.forEach(row => {
                 if (row[0] && row[0].toLowerCase().startsWith('classe')) {
                     currentClassName = row[0];
@@ -163,18 +143,11 @@
                 } else if (currentClassName && currentGroupName) {
                     classes[currentClassName][currentGroupName].push({
                         name: row[0],
-                        id: row[1].toString().trim(),
+                        id: row[1].toString().trim(), // Normaliser l'ID
                         present: false
                     });
                 }
             });
-
-            // Extraction de l'emploi du temps de la feuille "Emploi du Temps"
-            const scheduleSheet = workbook.Sheets['Emploi du Temps'];
-            if (scheduleSheet) {
-                const scheduleData = XLSX.utils.sheet_to_json(scheduleSheet, {header: 1});
-                schedule = scheduleData;
-            }
 
             populateClassSelect();
             showMenu();
@@ -205,7 +178,6 @@
         function showMenu() {
             document.getElementById('menu').style.display = 'block';
             document.getElementById('table-container').style.display = 'none';
-            document.getElementById('schedule-container').style.display = 'none';
         }
 
         function showClass() {
@@ -218,26 +190,9 @@
                 populateGroupSelect();
                 updateTable();
                 document.getElementById('menu').style.display = 'none';
-                document.getElementById('schedule-container').style.display = 'block';
-                displaySchedule(); // Affiche l'emploi du temps après la sélection de la classe
                 document.getElementById('table-container').style.display = 'block';
-                focusBarcodeInput();
+                focusBarcodeInput(); // Focus sur le champ de code-barres
             }
-        }
-
-        function displaySchedule() {
-            const scheduleTableBody = document.getElementById('scheduleTableBody');
-            scheduleTableBody.innerHTML = '';
-
-            schedule.forEach(row => {
-                const tr = document.createElement('tr');
-                row.forEach(cell => {
-                    const td = document.createElement('td');
-                    td.textContent = cell;
-                    tr.appendChild(td);
-                });
-                scheduleTableBody.appendChild(tr);
-            });
         }
 
         function updateTable() {
@@ -263,59 +218,65 @@
                 studentTable.appendChild(row);
             });
 
-            focusBarcodeInput();
+            focusBarcodeInput(); // Focus sur le champ de code-barres après la mise à jour de la table
         }
 
         function handleBarcodeScan(value) {
-            const normalizedValue = value.trim();
-            const student = findStudentByBarcode(normalizedValue);
-            if (student) {
-                student.present = true;
-                updateTable();
-            }
-        }
-
-        function findStudentByBarcode(barcode) {
+            const normalizedValue = value.trim(); // Normaliser le code-barres scanné
             const students = currentGroup === 'all'
                 ? Object.values(classes[currentClass]).flat()
                 : classes[currentClass][currentGroup];
-            
-            return students.find(student => student.id === barcode);
+
+            const student = students.find(s => s.id === normalizedValue); // Comparaison avec la valeur normalisée
+            if (student) {
+                student.present = true;
+                updateTable();
+            } else {
+                alert('Élève non trouvé !');
+            }
         }
+
+        document.getElementById('barcodeInput').addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                const barcodeValue = event.target.value;
+                if (barcodeValue) {
+                    handleBarcodeScan(barcodeValue);
+                    event.target.value = ''; // Réinitialiser le champ après le scan
+                }
+            }
+        });
 
         function togglePresence(checkbox) {
             const index = checkbox.dataset.index;
             const students = currentGroup === 'all'
                 ? Object.values(classes[currentClass]).flat()
                 : classes[currentClass][currentGroup];
-            
             students[index].present = checkbox.checked;
             updateTable();
         }
 
         function validerAppel() {
-            let presentCount = 0;
-            let absentCount = 0;
-            let absentList = [];
-
             const students = currentGroup === 'all'
                 ? Object.values(classes[currentClass]).flat()
                 : classes[currentClass][currentGroup];
-
-            students.forEach(student => {
-                if (student.present) {
-                    presentCount++;
-                } else {
-                    absentCount++;
-                    absentList.push(student.name);
-                }
-            });
-
-            alert(`Présents: ${presentCount}, Absents: ${absentCount}\nAbsents: ${absentList.join(', ')}`);
+            const presentCount = students.filter(student => student.present).length;
+            const absentCount = students.length - presentCount;
+            alert(`Nombre d'élèves présents : ${presentCount}, absents : ${absentCount}`);
         }
 
+        // Gérer le focus sur le champ de code-barres à chaque clic sur le document
+        document.addEventListener('click', (event) => {
+            if (event.target.tagName !== 'INPUT' && event.target.id !== 'groupSelect') {
+                focusBarcodeInput(); // Rendre le champ de code-barres focus
+            }
+        });
+
+        // Re-focus uniquement après que le groupe soit changé
+        document.getElementById('groupSelect').addEventListener('change', focusBarcodeInput);
+
         function focusBarcodeInput() {
-            document.getElementById('barcodeInput').focus();
+            const barcodeInput = document.getElementById('barcodeInput');
+            barcodeInput.focus();
         }
     </script>
 </body>
